@@ -19,7 +19,7 @@ import {
   useTheme,
 } from "@aws-amplify/ui-react";
 import { getOverrideProps } from "@aws-amplify/ui-react/internal";
-import { Calendar } from "../models";
+import { HouseHold } from "../models";
 import { fetchByPath, validateField } from "./utils";
 import { DataStore } from "aws-amplify";
 function ArrayField({
@@ -34,16 +34,9 @@ function ArrayField({
   defaultFieldValue,
   lengthLimit,
   getBadgeText,
-  errorMessage,
 }) {
   const labelElement = <Text>{label}</Text>;
-  const {
-    tokens: {
-      components: {
-        fieldmessages: { error: errorStyles },
-      },
-    },
-  } = useTheme();
+  const { tokens } = useTheme();
   const [selectedBadgeIndex, setSelectedBadgeIndex] = React.useState();
   const [isEditing, setIsEditing] = React.useState();
   React.useEffect(() => {
@@ -146,11 +139,6 @@ function ArrayField({
           >
             Add item
           </Button>
-          {errorMessage && hasError && (
-            <Text color={errorStyles.color} fontSize={errorStyles.fontSize}>
-              {errorMessage}
-            </Text>
-          )}
         </>
       ) : (
         <Flex justifyContent="flex-end">
@@ -169,6 +157,7 @@ function ArrayField({
           <Button
             size="small"
             variation="link"
+            color={tokens.colors.brand.primary[80]}
             isDisabled={hasError}
             onClick={addItem}
           >
@@ -180,7 +169,7 @@ function ArrayField({
     </React.Fragment>
   );
 }
-export default function CalendarCreateForm(props) {
+export default function HouseHoldCreateForm(props) {
   const {
     clearOnSuccess = true,
     onSuccess,
@@ -192,11 +181,14 @@ export default function CalendarCreateForm(props) {
     ...rest
   } = props;
   const initialValues = {
+    name: "",
     owners: [],
   };
+  const [name, setName] = React.useState(initialValues.name);
   const [owners, setOwners] = React.useState(initialValues.owners);
   const [errors, setErrors] = React.useState({});
   const resetStateValues = () => {
+    setName(initialValues.name);
     setOwners(initialValues.owners);
     setCurrentOwnersValue("");
     setErrors({});
@@ -204,6 +196,7 @@ export default function CalendarCreateForm(props) {
   const [currentOwnersValue, setCurrentOwnersValue] = React.useState("");
   const ownersRef = React.createRef();
   const validations = {
+    name: [{ type: "Required" }],
     owners: [{ type: "Required" }],
   };
   const runValidationTasks = async (
@@ -211,10 +204,9 @@ export default function CalendarCreateForm(props) {
     currentValue,
     getDisplayValue
   ) => {
-    const value =
-      currentValue && getDisplayValue
-        ? getDisplayValue(currentValue)
-        : currentValue;
+    const value = getDisplayValue
+      ? getDisplayValue(currentValue)
+      : currentValue;
     let validationResponse = validateField(value, validations[fieldName]);
     const customValidator = fetchByPath(onValidate, fieldName);
     if (customValidator) {
@@ -232,6 +224,7 @@ export default function CalendarCreateForm(props) {
       onSubmit={async (event) => {
         event.preventDefault();
         let modelFields = {
+          name,
           owners,
         };
         const validationResponses = await Promise.all(
@@ -262,7 +255,7 @@ export default function CalendarCreateForm(props) {
               modelFields[key] = undefined;
             }
           });
-          await DataStore.save(new Calendar(modelFields));
+          await DataStore.save(new HouseHold(modelFields));
           if (onSuccess) {
             onSuccess(modelFields);
           }
@@ -275,14 +268,40 @@ export default function CalendarCreateForm(props) {
           }
         }
       }}
-      {...getOverrideProps(overrides, "CalendarCreateForm")}
+      {...getOverrideProps(overrides, "HouseHoldCreateForm")}
       {...rest}
     >
+      <TextField
+        label="Name"
+        isRequired={true}
+        isReadOnly={false}
+        value={name}
+        onChange={(e) => {
+          let { value } = e.target;
+          if (onChange) {
+            const modelFields = {
+              name: value,
+              owners,
+            };
+            const result = onChange(modelFields);
+            value = result?.name ?? value;
+          }
+          if (errors.name?.hasError) {
+            runValidationTasks("name", value);
+          }
+          setName(value);
+        }}
+        onBlur={() => runValidationTasks("name", name)}
+        errorMessage={errors.name?.errorMessage}
+        hasError={errors.name?.hasError}
+        {...getOverrideProps(overrides, "name")}
+      ></TextField>
       <ArrayField
         onChange={async (items) => {
           let values = items;
           if (onChange) {
             const modelFields = {
+              name,
               owners: values,
             };
             const result = onChange(modelFields);
@@ -294,8 +313,7 @@ export default function CalendarCreateForm(props) {
         currentFieldValue={currentOwnersValue}
         label={"Owners"}
         items={owners}
-        hasError={errors?.owners?.hasError}
-        errorMessage={errors?.owners?.errorMessage}
+        hasError={errors.owners?.hasError}
         setFieldValue={setCurrentOwnersValue}
         inputFieldRef={ownersRef}
         defaultFieldValue={""}

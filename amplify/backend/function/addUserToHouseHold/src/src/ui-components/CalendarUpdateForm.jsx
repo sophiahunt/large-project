@@ -34,16 +34,9 @@ function ArrayField({
   defaultFieldValue,
   lengthLimit,
   getBadgeText,
-  errorMessage,
 }) {
   const labelElement = <Text>{label}</Text>;
-  const {
-    tokens: {
-      components: {
-        fieldmessages: { error: errorStyles },
-      },
-    },
-  } = useTheme();
+  const { tokens } = useTheme();
   const [selectedBadgeIndex, setSelectedBadgeIndex] = React.useState();
   const [isEditing, setIsEditing] = React.useState();
   React.useEffect(() => {
@@ -146,11 +139,6 @@ function ArrayField({
           >
             Add item
           </Button>
-          {errorMessage && hasError && (
-            <Text color={errorStyles.color} fontSize={errorStyles.fontSize}>
-              {errorMessage}
-            </Text>
-          )}
         </>
       ) : (
         <Flex justifyContent="flex-end">
@@ -169,6 +157,7 @@ function ArrayField({
           <Button
             size="small"
             variation="link"
+            color={tokens.colors.brand.primary[80]}
             isDisabled={hasError}
             onClick={addItem}
           >
@@ -180,9 +169,10 @@ function ArrayField({
     </React.Fragment>
   );
 }
-export default function CalendarCreateForm(props) {
+export default function CalendarUpdateForm(props) {
   const {
-    clearOnSuccess = true,
+    id: idProp,
+    calendar,
     onSuccess,
     onError,
     onSubmit,
@@ -197,10 +187,24 @@ export default function CalendarCreateForm(props) {
   const [owners, setOwners] = React.useState(initialValues.owners);
   const [errors, setErrors] = React.useState({});
   const resetStateValues = () => {
-    setOwners(initialValues.owners);
+    const cleanValues = calendarRecord
+      ? { ...initialValues, ...calendarRecord }
+      : initialValues;
+    setOwners(cleanValues.owners ?? []);
     setCurrentOwnersValue("");
     setErrors({});
   };
+  const [calendarRecord, setCalendarRecord] = React.useState(calendar);
+  React.useEffect(() => {
+    const queryData = async () => {
+      const record = idProp
+        ? await DataStore.query(Calendar, idProp)
+        : calendar;
+      setCalendarRecord(record);
+    };
+    queryData();
+  }, [idProp, calendar]);
+  React.useEffect(resetStateValues, [calendarRecord]);
   const [currentOwnersValue, setCurrentOwnersValue] = React.useState("");
   const ownersRef = React.createRef();
   const validations = {
@@ -211,10 +215,9 @@ export default function CalendarCreateForm(props) {
     currentValue,
     getDisplayValue
   ) => {
-    const value =
-      currentValue && getDisplayValue
-        ? getDisplayValue(currentValue)
-        : currentValue;
+    const value = getDisplayValue
+      ? getDisplayValue(currentValue)
+      : currentValue;
     let validationResponse = validateField(value, validations[fieldName]);
     const customValidator = fetchByPath(onValidate, fieldName);
     if (customValidator) {
@@ -262,12 +265,13 @@ export default function CalendarCreateForm(props) {
               modelFields[key] = undefined;
             }
           });
-          await DataStore.save(new Calendar(modelFields));
+          await DataStore.save(
+            Calendar.copyOf(calendarRecord, (updated) => {
+              Object.assign(updated, modelFields);
+            })
+          );
           if (onSuccess) {
             onSuccess(modelFields);
-          }
-          if (clearOnSuccess) {
-            resetStateValues();
           }
         } catch (err) {
           if (onError) {
@@ -275,7 +279,7 @@ export default function CalendarCreateForm(props) {
           }
         }
       }}
-      {...getOverrideProps(overrides, "CalendarCreateForm")}
+      {...getOverrideProps(overrides, "CalendarUpdateForm")}
       {...rest}
     >
       <ArrayField
@@ -294,8 +298,7 @@ export default function CalendarCreateForm(props) {
         currentFieldValue={currentOwnersValue}
         label={"Owners"}
         items={owners}
-        hasError={errors?.owners?.hasError}
-        errorMessage={errors?.owners?.errorMessage}
+        hasError={errors.owners?.hasError}
         setFieldValue={setCurrentOwnersValue}
         inputFieldRef={ownersRef}
         defaultFieldValue={""}
@@ -325,13 +328,14 @@ export default function CalendarCreateForm(props) {
         {...getOverrideProps(overrides, "CTAFlex")}
       >
         <Button
-          children="Clear"
+          children="Reset"
           type="reset"
           onClick={(event) => {
             event.preventDefault();
             resetStateValues();
           }}
-          {...getOverrideProps(overrides, "ClearButton")}
+          isDisabled={!(idProp || calendar)}
+          {...getOverrideProps(overrides, "ResetButton")}
         ></Button>
         <Flex
           gap="15px"
@@ -341,7 +345,10 @@ export default function CalendarCreateForm(props) {
             children="Submit"
             type="submit"
             variation="primary"
-            isDisabled={Object.values(errors).some((e) => e?.hasError)}
+            isDisabled={
+              !(idProp || calendar) ||
+              Object.values(errors).some((e) => e?.hasError)
+            }
             {...getOverrideProps(overrides, "SubmitButton")}
           ></Button>
         </Flex>

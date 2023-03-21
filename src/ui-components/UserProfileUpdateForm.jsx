@@ -52,7 +52,7 @@ export default function UserProfileUpdateForm(props) {
   }, [idProp, userProfile]);
   React.useEffect(resetStateValues, [userProfileRecord]);
   const validations = {
-    owner: [],
+    owner: [{ type: "Required" }],
     preferredName: [],
   };
   const runValidationTasks = async (
@@ -60,9 +60,10 @@ export default function UserProfileUpdateForm(props) {
     currentValue,
     getDisplayValue
   ) => {
-    const value = getDisplayValue
-      ? getDisplayValue(currentValue)
-      : currentValue;
+    const value =
+      currentValue && getDisplayValue
+        ? getDisplayValue(currentValue)
+        : currentValue;
     let validationResponse = validateField(value, validations[fieldName]);
     const customValidator = fetchByPath(onValidate, fieldName);
     if (customValidator) {
@@ -130,7 +131,7 @@ export default function UserProfileUpdateForm(props) {
     >
       <TextField
         label="Owner"
-        isRequired={false}
+        isRequired={true}
         isReadOnly={false}
         value={owner}
         onChange={(e) => {

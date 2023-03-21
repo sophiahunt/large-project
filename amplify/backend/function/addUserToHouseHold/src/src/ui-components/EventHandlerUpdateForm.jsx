@@ -19,7 +19,7 @@ import {
   useTheme,
 } from "@aws-amplify/ui-react";
 import { getOverrideProps } from "@aws-amplify/ui-react/internal";
-import { Calendar } from "../models";
+import { EventHandler } from "../models";
 import { fetchByPath, validateField } from "./utils";
 import { DataStore } from "aws-amplify";
 function ArrayField({
@@ -34,16 +34,9 @@ function ArrayField({
   defaultFieldValue,
   lengthLimit,
   getBadgeText,
-  errorMessage,
 }) {
   const labelElement = <Text>{label}</Text>;
-  const {
-    tokens: {
-      components: {
-        fieldmessages: { error: errorStyles },
-      },
-    },
-  } = useTheme();
+  const { tokens } = useTheme();
   const [selectedBadgeIndex, setSelectedBadgeIndex] = React.useState();
   const [isEditing, setIsEditing] = React.useState();
   React.useEffect(() => {
@@ -146,11 +139,6 @@ function ArrayField({
           >
             Add item
           </Button>
-          {errorMessage && hasError && (
-            <Text color={errorStyles.color} fontSize={errorStyles.fontSize}>
-              {errorMessage}
-            </Text>
-          )}
         </>
       ) : (
         <Flex justifyContent="flex-end">
@@ -169,6 +157,7 @@ function ArrayField({
           <Button
             size="small"
             variation="link"
+            color={tokens.colors.brand.primary[80]}
             isDisabled={hasError}
             onClick={addItem}
           >
@@ -180,9 +169,10 @@ function ArrayField({
     </React.Fragment>
   );
 }
-export default function CalendarCreateForm(props) {
+export default function EventHandlerUpdateForm(props) {
   const {
-    clearOnSuccess = true,
+    id: idProp,
+    eventHandler,
     onSuccess,
     onError,
     onSubmit,
@@ -192,29 +182,55 @@ export default function CalendarCreateForm(props) {
     ...rest
   } = props;
   const initialValues = {
+    frequency: "",
     owners: [],
+    sourceDate: "",
+    endDate: "",
   };
+  const [frequency, setFrequency] = React.useState(initialValues.frequency);
   const [owners, setOwners] = React.useState(initialValues.owners);
+  const [sourceDate, setSourceDate] = React.useState(initialValues.sourceDate);
+  const [endDate, setEndDate] = React.useState(initialValues.endDate);
   const [errors, setErrors] = React.useState({});
   const resetStateValues = () => {
-    setOwners(initialValues.owners);
+    const cleanValues = eventHandlerRecord
+      ? { ...initialValues, ...eventHandlerRecord }
+      : initialValues;
+    setFrequency(cleanValues.frequency);
+    setOwners(cleanValues.owners ?? []);
     setCurrentOwnersValue("");
+    setSourceDate(cleanValues.sourceDate);
+    setEndDate(cleanValues.endDate);
     setErrors({});
   };
+  const [eventHandlerRecord, setEventHandlerRecord] =
+    React.useState(eventHandler);
+  React.useEffect(() => {
+    const queryData = async () => {
+      const record = idProp
+        ? await DataStore.query(EventHandler, idProp)
+        : eventHandler;
+      setEventHandlerRecord(record);
+    };
+    queryData();
+  }, [idProp, eventHandler]);
+  React.useEffect(resetStateValues, [eventHandlerRecord]);
   const [currentOwnersValue, setCurrentOwnersValue] = React.useState("");
   const ownersRef = React.createRef();
   const validations = {
+    frequency: [{ type: "Required" }],
     owners: [{ type: "Required" }],
+    sourceDate: [{ type: "Required" }],
+    endDate: [{ type: "Required" }],
   };
   const runValidationTasks = async (
     fieldName,
     currentValue,
     getDisplayValue
   ) => {
-    const value =
-      currentValue && getDisplayValue
-        ? getDisplayValue(currentValue)
-        : currentValue;
+    const value = getDisplayValue
+      ? getDisplayValue(currentValue)
+      : currentValue;
     let validationResponse = validateField(value, validations[fieldName]);
     const customValidator = fetchByPath(onValidate, fieldName);
     if (customValidator) {
@@ -222,6 +238,23 @@ export default function CalendarCreateForm(props) {
     }
     setErrors((errors) => ({ ...errors, [fieldName]: validationResponse }));
     return validationResponse;
+  };
+  const convertToLocal = (date) => {
+    const df = new Intl.DateTimeFormat("default", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      calendar: "iso8601",
+      numberingSystem: "latn",
+      hour12: false,
+    });
+    const parts = df.formatToParts(date).reduce((acc, part) => {
+      acc[part.type] = part.value;
+      return acc;
+    }, {});
+    return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
   };
   return (
     <Grid
@@ -232,7 +265,10 @@ export default function CalendarCreateForm(props) {
       onSubmit={async (event) => {
         event.preventDefault();
         let modelFields = {
+          frequency,
           owners,
+          sourceDate,
+          endDate,
         };
         const validationResponses = await Promise.all(
           Object.keys(validations).reduce((promises, fieldName) => {
@@ -262,12 +298,13 @@ export default function CalendarCreateForm(props) {
               modelFields[key] = undefined;
             }
           });
-          await DataStore.save(new Calendar(modelFields));
+          await DataStore.save(
+            EventHandler.copyOf(eventHandlerRecord, (updated) => {
+              Object.assign(updated, modelFields);
+            })
+          );
           if (onSuccess) {
             onSuccess(modelFields);
-          }
-          if (clearOnSuccess) {
-            resetStateValues();
           }
         } catch (err) {
           if (onError) {
@@ -275,15 +312,45 @@ export default function CalendarCreateForm(props) {
           }
         }
       }}
-      {...getOverrideProps(overrides, "CalendarCreateForm")}
+      {...getOverrideProps(overrides, "EventHandlerUpdateForm")}
       {...rest}
     >
+      <TextField
+        label="Frequency"
+        isRequired={true}
+        isReadOnly={false}
+        value={frequency}
+        onChange={(e) => {
+          let { value } = e.target;
+          if (onChange) {
+            const modelFields = {
+              frequency: value,
+              owners,
+              sourceDate,
+              endDate,
+            };
+            const result = onChange(modelFields);
+            value = result?.frequency ?? value;
+          }
+          if (errors.frequency?.hasError) {
+            runValidationTasks("frequency", value);
+          }
+          setFrequency(value);
+        }}
+        onBlur={() => runValidationTasks("frequency", frequency)}
+        errorMessage={errors.frequency?.errorMessage}
+        hasError={errors.frequency?.hasError}
+        {...getOverrideProps(overrides, "frequency")}
+      ></TextField>
       <ArrayField
         onChange={async (items) => {
           let values = items;
           if (onChange) {
             const modelFields = {
+              frequency,
               owners: values,
+              sourceDate,
+              endDate,
             };
             const result = onChange(modelFields);
             values = result?.owners ?? values;
@@ -294,8 +361,7 @@ export default function CalendarCreateForm(props) {
         currentFieldValue={currentOwnersValue}
         label={"Owners"}
         items={owners}
-        hasError={errors?.owners?.hasError}
-        errorMessage={errors?.owners?.errorMessage}
+        hasError={errors.owners?.hasError}
         setFieldValue={setCurrentOwnersValue}
         inputFieldRef={ownersRef}
         defaultFieldValue={""}
@@ -320,18 +386,77 @@ export default function CalendarCreateForm(props) {
           {...getOverrideProps(overrides, "owners")}
         ></TextField>
       </ArrayField>
+      <TextField
+        label="Source date"
+        isRequired={true}
+        isReadOnly={false}
+        type="datetime-local"
+        value={sourceDate && convertToLocal(new Date(sourceDate))}
+        onChange={(e) => {
+          let value =
+            e.target.value === "" ? "" : new Date(e.target.value).toISOString();
+          if (onChange) {
+            const modelFields = {
+              frequency,
+              owners,
+              sourceDate: value,
+              endDate,
+            };
+            const result = onChange(modelFields);
+            value = result?.sourceDate ?? value;
+          }
+          if (errors.sourceDate?.hasError) {
+            runValidationTasks("sourceDate", value);
+          }
+          setSourceDate(value);
+        }}
+        onBlur={() => runValidationTasks("sourceDate", sourceDate)}
+        errorMessage={errors.sourceDate?.errorMessage}
+        hasError={errors.sourceDate?.hasError}
+        {...getOverrideProps(overrides, "sourceDate")}
+      ></TextField>
+      <TextField
+        label="End date"
+        isRequired={true}
+        isReadOnly={false}
+        type="datetime-local"
+        value={endDate && convertToLocal(new Date(endDate))}
+        onChange={(e) => {
+          let value =
+            e.target.value === "" ? "" : new Date(e.target.value).toISOString();
+          if (onChange) {
+            const modelFields = {
+              frequency,
+              owners,
+              sourceDate,
+              endDate: value,
+            };
+            const result = onChange(modelFields);
+            value = result?.endDate ?? value;
+          }
+          if (errors.endDate?.hasError) {
+            runValidationTasks("endDate", value);
+          }
+          setEndDate(value);
+        }}
+        onBlur={() => runValidationTasks("endDate", endDate)}
+        errorMessage={errors.endDate?.errorMessage}
+        hasError={errors.endDate?.hasError}
+        {...getOverrideProps(overrides, "endDate")}
+      ></TextField>
       <Flex
         justifyContent="space-between"
         {...getOverrideProps(overrides, "CTAFlex")}
       >
         <Button
-          children="Clear"
+          children="Reset"
           type="reset"
           onClick={(event) => {
             event.preventDefault();
             resetStateValues();
           }}
-          {...getOverrideProps(overrides, "ClearButton")}
+          isDisabled={!(idProp || eventHandler)}
+          {...getOverrideProps(overrides, "ResetButton")}
         ></Button>
         <Flex
           gap="15px"
@@ -341,7 +466,10 @@ export default function CalendarCreateForm(props) {
             children="Submit"
             type="submit"
             variation="primary"
-            isDisabled={Object.values(errors).some((e) => e?.hasError)}
+            isDisabled={
+              !(idProp || eventHandler) ||
+              Object.values(errors).some((e) => e?.hasError)
+            }
             {...getOverrideProps(overrides, "SubmitButton")}
           ></Button>
         </Flex>

@@ -34,9 +34,16 @@ function ArrayField({
   defaultFieldValue,
   lengthLimit,
   getBadgeText,
+  errorMessage,
 }) {
   const labelElement = <Text>{label}</Text>;
-  const { tokens } = useTheme();
+  const {
+    tokens: {
+      components: {
+        fieldmessages: { error: errorStyles },
+      },
+    },
+  } = useTheme();
   const [selectedBadgeIndex, setSelectedBadgeIndex] = React.useState();
   const [isEditing, setIsEditing] = React.useState();
   React.useEffect(() => {
@@ -139,6 +146,11 @@ function ArrayField({
           >
             Add item
           </Button>
+          {errorMessage && hasError && (
+            <Text color={errorStyles.color} fontSize={errorStyles.fontSize}>
+              {errorMessage}
+            </Text>
+          )}
         </>
       ) : (
         <Flex justifyContent="flex-end">
@@ -157,7 +169,6 @@ function ArrayField({
           <Button
             size="small"
             variation="link"
-            color={tokens.colors.brand.primary[80]}
             isDisabled={hasError}
             onClick={addItem}
           >
@@ -208,16 +219,17 @@ export default function ChatRoomUpdateForm(props) {
   const [currentOwnersValue, setCurrentOwnersValue] = React.useState("");
   const ownersRef = React.createRef();
   const validations = {
-    owners: [],
+    owners: [{ type: "Required" }],
   };
   const runValidationTasks = async (
     fieldName,
     currentValue,
     getDisplayValue
   ) => {
-    const value = getDisplayValue
-      ? getDisplayValue(currentValue)
-      : currentValue;
+    const value =
+      currentValue && getDisplayValue
+        ? getDisplayValue(currentValue)
+        : currentValue;
     let validationResponse = validateField(value, validations[fieldName]);
     const customValidator = fetchByPath(onValidate, fieldName);
     if (customValidator) {
@@ -298,14 +310,15 @@ export default function ChatRoomUpdateForm(props) {
         currentFieldValue={currentOwnersValue}
         label={"Owners"}
         items={owners}
-        hasError={errors.owners?.hasError}
+        hasError={errors?.owners?.hasError}
+        errorMessage={errors?.owners?.errorMessage}
         setFieldValue={setCurrentOwnersValue}
         inputFieldRef={ownersRef}
         defaultFieldValue={""}
       >
         <TextField
           label="Owners"
-          isRequired={false}
+          isRequired={true}
           isReadOnly={false}
           value={currentOwnersValue}
           onChange={(e) => {
